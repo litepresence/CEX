@@ -1,8 +1,11 @@
 # CEX
 
 Binance, Poloniex, Bitfinex, Bittrex, Coinbase, Kraken
+--------------
 
 Centralized Cryptocurrency Exchange API Authentication
+--------------
+
 
 PRIVATE:
 
@@ -12,4 +15,4 @@ PUBLIC:
 
 Normalized Last, Book, Candles
 
-WTFPL litepresence 2019
+WTFPL www.litepresence.com 2019
