@@ -1,6 +1,6 @@
 # CEX
 
-Binance, Poloniex, Bitfinex, Bittrex, Coinbase, Kraken
+Binance, Bitfinex, Bittrex, Coinbase, Kraken, Kucoin, Poloniex
 --------------
 
 Centralized Cryptocurrency Exchange API Authentication
