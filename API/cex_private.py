@@ -1,7 +1,7 @@
 """
 Normalized Buy, Sell, Cancel, Open Orders, Balances
 
-Binance, Poloniex, Bitfinex, Bittrex, Coinbase, Kraken
+Binance, Poloniex, Bitfinex, Bittrex, Coinbase, Kraken, Kucoin
 
 litepresence.com 2019
 """
