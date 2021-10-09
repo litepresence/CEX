@@ -6,35 +6,36 @@ Binance, Poloniex, Bitfinex, Bittrex, Coinbase, Kraken
 litepresence.com 2019
 """
 
+# pylint: disable=broad-except, too-many-lines
+# pylint: disable=too-many-locals, too-many-statements, too-many-branches
+
 # NOTE: THIS WAS WRITTEN FROM API DOCS WITHOUT LIVE TESTING
 # NOTE: set DETAIL and SANDBOX to False for live trading
 # NOTE: toolkit rounds to limit error handling and may be off by dust amount
-
 # raise NotImplementedError("WARNING: PRE ALPHA - NOT LIVE TESTED")
 
 # STANDARD MODULES
+import hashlib
+import hmac
 import os
 import time
-import hmac
-import hashlib
-from pprint import pprint
-from json import dumps as json_dumps
 from base64 import b64decode, b64encode
+from json import dumps as json_dumps
 from multiprocessing import Process, Value
+from pprint import pprint
+from urllib.parse import urlencode
 
 # THIRD PARTY MODULES
-from urllib.parse import urlencode
 import requests
 
-# EXTINCTION EVENT MODULES
-from cex_public import race_write, race_read_json
-from cex_public import symbol_syntax, trace
+# CEX MODULES
+from utilities import json_ipc, symbol_syntax, trace
 
 # GLOBAL USER DEFINED CONSTANTS
 TIMEOUT = 30
 ATTEMPTS = 10
 PATH = str(os.path.dirname(os.path.abspath(__file__))) + "/"
-DETAIL = False
+DETAIL = True
 SANDBOX = False
 
 
@@ -58,17 +59,17 @@ def about():
     all external requests are multiprocess wrapped for durability
     open order and balances are normalized when returned
     cancel and post orders are returned raw
-    
+
     USER PROVIDES:
-    
+
     api["key"]          # public key from exchange
     api["secret"]       # private key from exchange
     api["passphrase"]   # some exchanges require passphrase else ""
     api["exchange"]     # name of exchange; ie "binance"
     api["pair"]         # market pair symbol in format BTC:USD
-    
+
     SCRIPT BUILDS request(api, params) SPECIFIC:
-    
+
     api["symbol"]       # exchange specific syntax of api["pair"]
     api["nonce"]        # time.time() at beginning of request
     api["url"]          # https://...xyz.com
@@ -77,23 +78,33 @@ def about():
     api["params"]       # dict with request specific parameters
     api["data"]         # str with request specific parameters
     api["headers"]      # contains authentication signature
-    
+
     REFERENCE:
-    
+
     https://bittrex.github.io/api/v1-1
     https://github.com/ericsomdahl/python-bittrex/blob/master/bittrex
     https://github.com/veox/python3-krakenex/blob/master/krakenex
     https://docs.bitfinex.com/docs/rest-auth
     https://github.com/scottjbarr/bitfinex/blob/develop/bitfinex/client.py
-    https://github.com/bitfinexcom/bitfinex-api-py  
-    
+    https://github.com/bitfinexcom/bitfinex-api-py
+    https://docs.kucoin.com
+
     KNOWN BUGS:
-    
-    No error handling    
+
+    No error handling
     Only Coinbase is live tested with funds
     """
 
     print(about.__doc__)
+
+
+def compact_json_dumps(data):
+    """convert dict to compact json
+    :return: str
+    """
+    if not data:
+        return ""
+    return json_dumps(data, separators=(",", ":"), ensure_ascii=False)
 
 
 def lookup_url(api):
@@ -109,6 +120,7 @@ def lookup_url(api):
             "bitfinex": "WARN_NO_SANDBOX",
             "kraken": "WARN_NO_SANDBOX",
             "bittrex": "WARN_NO_SANDBOX",
+            "kucoin": "https://openapi-sandbox.kucoin.com",
         }
     else:
         urls = {
@@ -118,6 +130,7 @@ def lookup_url(api):
             "bitfinex": "https://api.bitfinex.com",
             "kraken": "https://api.kraken.com",
             "bittrex": "https://api.bittrex.com",
+            "kucoin": "https://api.kucoin.com",
         }
     api["url"] = urls[api["exchange"]]
     return api
@@ -175,9 +188,9 @@ def signed_request(api, signal):
     elif api["exchange"] == "kraken":
         api["data"] = api["params"][:]
         api["params"] = {}
-        data["nonce"] = int(1000 * api["nonce"])
+        api["data"]["nonce"] = int(1000 * api["nonce"])
         api["endpoint"] = "/2.1.0/private/" + api["endpoint"]
-        message = (str(data["nonce"]) + urlencode(data)).encode("ascii")
+        message = (str(api["data"]["nonce"]) + urlencode(api["data"])).encode("ascii")
         message = api["endpoint"].encode("ascii") + hashlib.sha256(message).digest()
         secret = b64decode(api["secret"])
         signature = b64encode(hmac.new(secret, message, hashlib.sha512).digest())
@@ -188,8 +201,8 @@ def signed_request(api, signal):
         }
     elif api["exchange"] == "bitfinex":
         nonce = str(int(api["nonce"] * 1000))
-        api["endpoint"] = path = "v2/auth/r/orders"
-        api["data"] = json.dumps(api["params"])
+        api["endpoint"] = "v2/auth/r/orders"
+        api["data"] = json_dumps(api["params"])
         api["params"] = {}
         message = ("/api/" + api["endpoint"] + nonce + api["data"]).encode("utf8")
         secret = api["secret"].encode("utf8")
@@ -201,34 +214,79 @@ def signed_request(api, signal):
             "content-type": "application/json",
         }
 
-    # I can do this to tag the work?  hmm?  maybe...
-    api["headers"]["User-Agent"] = "extinctionEVENT litepresence.com"
+    elif api["exchange"] == "kucoin":
+        nonce = str(int(api["nonce"] * 1000))
+        if api["params"]:
+            api["endpoint"] += "?" + urlencode(api["params"])
+        message = nonce + api["method"] + api["endpoint"]
+        api["params"] = None
+        api["data"] = None
 
-    url = api["url"] + api["endpoint"]
+        signature = b64encode(
+            hmac.new(
+                api["secret"].encode("utf8"), message.encode("utf-8"), hashlib.sha256
+            ).digest()
+        )
+        passphrase = b64encode(
+            hmac.new(
+                api["secret"].encode("utf8"),
+                api["passphrase"].encode("utf-8"),
+                hashlib.sha256,
+            ).digest()
+        )
+        api["headers"] = {
+            "KC-API-SIGN": signature,
+            "KC-API-TIMESTAMP": nonce,
+            "KC-API-KEY": api["key"],
+            "KC-API-PASSPHRASE": passphrase,
+            "KC-API-KEY-VERSION": "2",
+            "Content-Type": "application/json",
+            "User-Agent": "www.litepresence.com finitestate@tutamail.com",
+        }
+    # process the request
     ret = requests.request(
         method=api["method"],
-        url=url,
+        url=api["url"] + api["endpoint"],
         data=api["data"],
         params=api["params"],
         headers=api["headers"],
     )
     response = ret.json()
+    # print
     if DETAIL:
-        pprint({k: v for k, v in api if (k not in ["passphrase", "key", "secret"])})
+        pprint(
+            {
+                "api": {
+                    k: v
+                    for k, v in api.items()
+                    if (k not in ["passphrase", "key", "secret", "headers"])
+                }
+            }
+        )
         print("ret           ", ret)
-        print("ret json      ", response)
+        print("status        ", ret.status_code)
         print("ret method    ", ret.request.method)
         print("ret url       ", ret.request.url)
         print("ret endpoint  ", ret.request.path_url)
         print("ret body      ", ret.request.body)
-        print("ret headers   ", ret.request.headers)
+        print(
+            "ret headers   ",
+            {
+                k: v
+                for k, v in dict(ret.request.headers).items()
+                if k not in ["KC-API-KEY", "KC-API-PASSPHRASE", "KC-API-SIGN"]
+            },
+        )
+        print("ret json      ")
+        pprint(ret.json())
+    # interprocess communication
     doc = (
         api["exchange"]
         + api["pair"]
         + str(int(10 ** 6 * api["nonce"]))
         + "_{}_private.txt".format(api["exchange"])
     )
-    race_write(doc, json_dumps(response))
+    json_ipc(doc, json_dumps(response))
     # signal multiprocessing handler to terminate
     signal.value = 1
 
@@ -267,7 +325,7 @@ def process_request(api):
         + str(int(10 ** 6 * api["nonce"]))
         + "_{}_private.txt".format(api["exchange"])
     )
-    data = race_read_json(doc)
+    data = json_ipc(doc)
     path = PATH + "pipe/"
     if os.path.isfile(path + doc):
         os.remove(path + doc)
@@ -282,7 +340,7 @@ def process_request(api):
 def get_balances(api):
     """
     Normalized external requests for balances in market
-    {"asset_total": 0.0, "asset_free": 0.0, "asset_tied": 0.0, 
+    {"asset_total": 0.0, "asset_free": 0.0, "asset_tied": 0.0,
     "currency_total": 0.0, "currency_free": 0.0, "currency_tied": 0.0}
     """
 
@@ -318,6 +376,18 @@ def get_balances(api):
         api["endpoint"] = "/auth/r/wallets"
         api["params"] = {}
         api["method"] = "POST"
+    elif api["exchange"] == "kucoin":
+        api["endpoint"] = "/api/v1/accounts"
+        api["params"] = {}
+        api["method"] = "GET"
+    balances = {
+        "asset_total": 0,
+        "asset_free": 0,
+        "asset_tied": 0,
+        "currency_total": 0,
+        "currency_free": 0,
+        "currency_tied": 0,
+    }
     # make external call
     ret = process_request(api)
     # format json response to extinctionEVENT standard dictionary
@@ -400,6 +470,8 @@ def get_balances(api):
         balances["currency_tied"] = (kraken_bid_sum,)
         balances["asset_free"] = balances["asset_total"] - kraken_ask_sum
         balances["currency_free"] = balances["currency_total"] - kraken_bid_sum
+        balances["asset_total"] = balances["currency_free"] + balances["currency_tied"]
+        balances["currency_total"] = balances["asset_free"] + balances["asset_tied"]
 
     elif api["exchange"] == "bitfinex":
         # bitfinex uses a unique list of lists format that must be indexed
@@ -416,19 +488,44 @@ def get_balances(api):
             "currency_free": float(currency_account[4]),
             "currency_tied": bid,
         }
-    print(it("yellow", api["pair"]), it("purple", balances))
+
+    elif api["exchange"] == "kucoin":
+        ret = ret["data"]
+        print(ret)
+        if ret:
+            try:
+                asset_account = [
+                    i for i in ret if i["type"] == "trade" and i["currency"] == asset
+                ][0]
+            except:
+                asset_account = {"balance": 0, "available": 0, "holds": 0}
+            try:
+                currency_account = [
+                    i for i in ret if i["type"] == "trade" and i["currency"] == currency
+                ][0]
+            except:
+                currency_account = {"balance": 0, "available": 0, "holds": 0}
+            balances = {
+                "asset_total": float(asset_account["balance"]),
+                "asset_free": float(asset_account["available"]),
+                "asset_tied": float(asset_account["holds"]),
+                "currency_total": float(currency_account["balance"]),
+                "currency_free": float(currency_account["available"]),
+                "currency_tied": float(currency_account["holds"]),
+            }
+    print(api["pair"], balances)
     return balances
 
 
 def get_orders(api):
     """
     Normalized external requests for open orders in one market
-    
+
     normalized orders (sums in asset terms)
     {"bids": {}, "asks": {}, "bid_sum": 0.0, "ask_sum": 0.0}
-    
+
     normalized bid or ask (qty in asset terms)
-    {"price": 0.0, "order_id": "", "start_qty": 0.0, "current_qty": 0.0}   
+    {"price": 0.0, "order_id": "", "start_qty": 0.0, "current_qty": 0.0}
     """
     if DETAIL:
         print(get_orders.__doc__, api["pair"])
@@ -460,23 +557,35 @@ def get_orders(api):
         api["endpoint"] = "/orders"
         api["params"] = {"product_id": api["symbol"]}
         api["method"] = "GET"
-
+    elif api["exchange"] == "kucoin":
+        api["endpoint"] = "/api/v1/orders"
+        api["params"] = {
+            "status": "active",
+            "tradeType": "TRADE",
+            "symbol": api["symbol"],
+        }
+        api["method"] = "GET"
     # make external call
     ret = process_request(api)
+    print(ret)
     # format response to extinctionEVENT standards
     bids = []
     asks = []
     bid_sum = 0
     ask_sum = 0
-    # bittrex nests the response in a results key
+    # we're looking for a list of orders in the response
     if api["exchange"] == "bittrex":
         ret = ret["result"]
+    if api["exchange"] == "kucoin":
+        ret = ret["data"]["items"]
     # normalize all our open orders in this market
     for order in ret:
         normalized_order = {}
         # coinbase/kraken/binance do not provide current quantity
-        if api["exchange"] in ["coinbase", "binance", "kraken"]:
-            if (api["exchange"] == "coinbase") and (order["product_id"] == api["symbol"]):
+        if api["exchange"] in ["coinbase", "binance", "kraken", "kucoin"]:
+            if (api["exchange"] == "coinbase") and (
+                order["product_id"] == api["symbol"]
+            ):
                 order_type = order["side"]
                 normalized_order = {
                     "price": float(order["price"]),
@@ -492,18 +601,25 @@ def get_orders(api):
                     "start_qty": float(order["origQty"]),
                     "executed_qty": float(order["executedQty"]),
                 }
-
             elif api["exchange"] == "kraken":
                 # kraken nests the data mostly in "descr"
                 order_type = order["descr"]["type"]
                 # it also does not pre sort orders by symbol
-                if order["descr"]["pair"] == symbol:
+                if order["descr"]["pair"] == api["symbol"]:
                     normalized_order = {
                         "price": float(order["descr"]["price"]),
                         "order_id": str(order["refid"]),
                         "start_qty": float(order["descr"]["volume"]),
                         "executed_qty": float(order["descr"]["vol_exec"]),
                     }
+            elif api["exchange"] == "kucoin":
+                order_type = order["side"]
+                normalized_order = {
+                    "price": float(order["price"]),
+                    "order_id": str(order["id"]),
+                    "start_qty": float(order["size"]),
+                    "executed_qty": float(order["dealSize"]),
+                }
             if normalized_order:
                 normalized_order["current_qty"] = (
                     normalized_order["start_qty"] - normalized_order["executed_qty"]
@@ -527,7 +643,7 @@ def get_orders(api):
                     "current_qty": float(order["QuantityRemaining"]),
                 }
             elif api["exchange"] == "bitfinex":
-                # see bitfinex docs for list indexing
+                # see bitfinex docs for list indexing; efficient but not human friendly
                 normalized_order = {
                     "price": float(order[16]),
                     "order_id": str(order[0]),
@@ -538,14 +654,15 @@ def get_orders(api):
                 normalized_order["start_qty"] - normalized_order["current_qty"]
             )
             # bitfinex uses negative values to denote sell
+            # FIXME is this code block in the right indention level?
             order_type = "buy"
             if normalized_order["start_qty"] < 0:
                 order_type = "sell"
-                normalized_order["start_qty"] *= 1
-                normalized_order["current_qty"] *= 1
-                normalized_order["executed_qty"] *= 1
+                normalized_order["start_qty"] *= -1
+                normalized_order["current_qty"] *= -1
+                normalized_order["executed_qty"] *= -1
 
-        if normalized_order:  # in case of kraken there may not be one
+        if normalized_order:  # kraken may not have one (not symbol sorted)
             order_type = order_type.lower()
             if order_type == "buy":
                 bids.append(normalized_order)
@@ -559,21 +676,23 @@ def get_orders(api):
 
 
 def post_orders(edicts, api):
-
+    """
+    wraps post_order() in a for to add a side key to the edict for buy/sell
+    """
     print("post_orders", edicts, api)
-    for idx, edict in enumerate(edicts):
+    for _, edict in enumerate(edicts):
         if edict["op"] in ["buy", "sell"]:
             edict["side"] = edict["op"]
             print("post_orders iter", edict)
             if edict["amount"] > 0:
                 print(post_order(edict, api))
-    
 
 
 def post_order(edict, api):
     """
     POST Normalized Limit Order
     """
+
     def precision(num, places):
         """
         return an amount rounded down to given precision
@@ -592,7 +711,7 @@ def post_order(edict, api):
     # each exchange has its own precision standards available by api call
     # to save call; hard coded max precision by assets > $25 price Nov 2019
     # FIXME: may need additional logic on case by case basis
-    asset, currency = api["pair"].split(":")
+    asset, _ = api["pair"].split(":")
     # special case precision for Bitcoin:Fiat
     if asset == "BTC":
         amount = precision(amount, 3)  # 0.000
@@ -663,8 +782,19 @@ def post_order(edict, api):
             "amount": amount,
         }
         if side == "sell":  # negative amount indicates sell
-            api["params"]["amount"] *= 1
+            api["params"]["amount"] *= -1
         api["endpoint"] = "/v2/auth/w/order/submit"
+        api["method"] = "POST"
+    elif api["exchange"] == "kucoin":
+        api["params"] = {
+            "clientOid": str(int(time.time() * 1000)),
+            "symbol": api["symbol"],
+            "side": side.lower(),
+            "type": "limit",
+            "price": price,
+            "size": amount,
+        }
+        api["endpoint"] = "/api/v1/orders"
         api["method"] = "POST"
     # make external POST order call
     ret = process_request(api)
@@ -686,7 +816,7 @@ def cancel(api, order_ids=None):
     else:
         print("Cancel Order Ids:", order_ids)
     # Coinbase and Poloniex offer both Cancel All and Cancel One
-    if api["exchange"] in ["coinbase", "poloniex"]:
+    if api["exchange"] in ["coinbase", "poloniex", "kucoin"]:
         if order_ids:
             # Cancel a list of orders
             ret = []
@@ -703,8 +833,12 @@ def cancel(api, order_ids=None):
                         "orderNumber": int(order_id),
                     }
                     api["method"] = "POST"
-                    response = process_request(api)
-                    ret.append({"order_id": order_id, "response": response})
+                elif api["exchange"] == "kucoin":
+                    api["endpoint"] = f"/api/v1/orders/{order_id}"
+                    api["params"] = None
+                    api["method"] = "DELETE"
+                response = process_request(api)
+                ret.append({"order_id": order_id, "response": response})
         else:
             # Cancel All
             if api["exchange"] == "coinbase":
@@ -718,6 +852,10 @@ def cancel(api, order_ids=None):
                     "currencyPair": api["symbol"],
                 }
                 api["method"] = "POST"
+            if api["exchange"] == "kucoin":
+                api["endpoint"] = "/api/v1/orders"
+                api["params"] = {"symbol": api["symbol"]}
+                api["method"] = "DELETE"
             ret = process_request(api)
 
     # Handle cases where "Cancel All" in one market is not supported
@@ -740,7 +878,7 @@ def cancel(api, order_ids=None):
                 api["method"] = "FIXME"  # FIXME
             elif api["exchange"] == "binance":
                 api["endpoint"] = "/api/v3/order"
-                api["params"] = {"symbol": symbol, "orderId": order_id}
+                api["params"] = {"symbol": api["symbol"], "orderId": order_id}
                 api["method"] = "DELETE"
             elif api["exchange"] == "bittrex":
                 api["endpoint"] = "/api/v1.1/market/cancel"
@@ -763,7 +901,7 @@ def authenticate(api):
     """
     try:
         balances = get_balances(api)
-        asset_free = balances["asset_free"]
+        print(balances["asset_free"])
         authenticated = True
     except Exception as error:
         print(trace(error))
@@ -776,33 +914,22 @@ def demo():
     """
     Open Orders and Account Balances Demonstration
     """
-    # get sandbox keys at https://public.sandbox.pro.coinbase.com/
     api = {
-        "symbol": "XLM:BTC",
-        "exchange": "coinbase",
+        "symbol": "XRP:BTC",
+        "exchange": "kucoin",
         "key": "test",
         "secret": "test",
         "passphrase": "test",
     }
-    api = {
-        "exchange": "coinbase",
-        "key": "",
-        "secret": "",
-        "passphrase": "",
-    }
-
-    api["pair"] = "XRP:BTC"
-    print(api["pair"])
-    # print("authenticated", authenticate(api))
+    print(api["symbol"])
+    print("authenticated", authenticate(api))
     print(cancel(api))
     print(get_orders(api))
     print(get_balances(api))
-
-    edict = {"side": "sell", "amount": 5531, "price": 0.00003142}
-
-    print(post_order(api, edict))
-    print(get_orders(api))
-    print(get_balances(api))
+    # edict = {"side": "sell", "amount": 5531, "price": 0.00003142}
+    # print(post_order(api, edict))
+    # print(get_orders(api))
+    # print(get_balances(api))
 
 
 if __name__ == "__main__":
