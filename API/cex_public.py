@@ -1,37 +1,37 @@
 """
 Normalized Last, Book, Candles
 
-Binance, Poloniex, Bitfinex, Bittrex, Coinbase, Kraken
+Binance, Bitfinex, Bittrex, Coinbase, Kraken, Kucoin, Poloniex
 
 litepresence 2019
 """
+# pylint: disable=broad-except, too-many-lines
+# pylint: disable=too-many-locals, too-many-statements, too-many-branches
+
+
 # STANDARD MODULES
-# ======================================================================
 import os
 import time
-from pprint import pprint
 from json import dumps as json_dumps
-from json import loads as json_loads
-from multiprocessing import Process, Value
-from datetime import datetime
-from calendar import timegm
 from math import ceil
-import traceback
-from random import random
+from multiprocessing import Process, Value
+from pprint import pprint
 
 # THIRD PARTY MODULES
-# ======================================================================
 import numpy as np
 import requests
 
+# CEX MODULES
+from utilities import (from_iso_date, json_ipc, symbol_syntax, to_iso_date,
+                       trace)
+
 # GLOBAL USER DEFINED CONSTANTS
-# ======================================================================
 TIMEOUT = 30
 ATTEMPTS = 10
 PATH = str(os.path.dirname(os.path.abspath(__file__))) + "/"
 DETAIL = False
+
 # READ ME
-# ======================================================================
 def read_me():
     """
     MODULE USAGE
@@ -41,35 +41,37 @@ def read_me():
     price = get_price(api))
     book = get_book(api, depth))
     candles = get_candles(api, interval, start, end))
-    
+
     # api contains keys ["pair" and "exchange"]; expanded form:
     # get_price(api={"pair":"BTC:USD", "exchange":"coinbase"})
 
     ABOUT
 
     Only supports top ranked exchanges with real volume over $10m daily
-    unified API inputs 
-    normalized return as dict of numpys 
+    unified API inputs
+    normalized return as dict of numpys
     pep8 / pylint
     procedural Python - no class objects
     external requests multiprocess wrapped
     architecture sorted by call type
     human readable interprocess communication via *.txt
     easy to compare exchange parameters
-    
+
     EXCHANGE RANKINGS
-    
-    https://www.sec.gov/comments/sr-nysearca-2019-01/srnysearca201901-5164833-183434.pdf    
-    
+
+    https://www.sec.gov/comments/sr-nysearca-2019-01/srnysearca201901-5164833-183434.pdf
+
     https://www.coingecko.com/en/exchanges
     https://www.cryptocompare.com/exchanges
     https://www.bti.live/exchanges/
     https://bitcoinexchangeguide.com/bitcoin-exchanges-in-the-united-states/
     https://coin.market/exchanges
-    https://cryptorank.io/exchanges    
-    
+    https://cryptorank.io/exchanges
+
+    https://docs.kucoin.com/
+
     ADDITIONAL EXCHANGES
-    
+
     Exchange addition PR's considered on case by case basis.
     $10m minimum daily - legitimate - volume
     """
@@ -94,131 +96,12 @@ def api_docs():
 
     https://www.kraken.com/features/api
     https://github.com/veox/python3-krakenex
-    https://support.kraken.com/hc/en-us/categories/360000080686-API    
+    https://support.kraken.com/hc/en-us/categories/360000080686-API
     """
     print(api_docs.__doc__)
 
 
-# TEXT PIPE
-# ======================================================================
-def race_write(doc="", text=""):
-    """
-    Bulletproof Write to File Operation for Text Pipe IPC
-    """
-    text = str(text)
-    i = 0
-    while True:
-        try:
-            time.sleep(0.05 * i ** 2)
-            i += 1
-            with open("pipe/" + doc, "w+") as handle:
-                handle.write(text)
-                handle.close()
-                break
-        except Exception as error:
-            msg = str(type(error).__name__) + str(error.args)
-            msg += " race_write()"
-            print(msg)
-            try:
-                handle.close()
-            except:
-                pass
-            continue
-        finally:
-            try:
-                handle.close()
-            except:
-                pass
-
-
-def race_read_json(doc=""):
-    """
-    Bulletproof Read JSON from File Operation for Text Pipe IPC
-    """
-    i = 0
-    while True:
-        try:
-            time.sleep(0.05 * i ** 2)
-            i += 1
-            with open("pipe/" + doc, "r") as handle:
-                data = json_loads(handle.read())
-                handle.close()
-                return data
-        except Exception as error:
-            msg = str(type(error).__name__) + str(error.args)
-            msg += " race_read_json()"
-            print(msg)
-            try:
-                handle.close()
-            except:
-                pass
-            continue
-        finally:
-            try:
-                handle.close()
-            except:
-                pass
-
-
-# FORMATING
-# ======================================================================
-def from_iso_date(date):
-    """
-    ISO to UNIX conversion
-    """
-    return int(timegm(time.strptime(str(date), "%Y-%m-%dT%H:%M:%S")))
-
-
-def to_iso_date(unix):
-    """
-    iso8601 datetime given unix epoch
-    """
-    return datetime.utcfromtimestamp(int(unix)).isoformat()
-
-
-def symbol_syntax(exchange, symbol):
-    """
-    translate ticker symbol to each exchange's local syntax
-    """
-    asset, currency = symbol.upper().split(":")
-    # ticker symbol colloquialisms
-    if exchange == "kraken":
-        if asset == "BTC":
-            asset = "XBT"
-        if currency == "BTC":
-            currency = "XBT"
-    if exchange == "poloniex":
-        if asset == "XLM":
-            asset = "STR"
-        if currency == "USD":
-            currency = "USDT"
-    if exchange == "binance":
-        if currency == "USD":
-            currency = "USDT"
-    symbols = {
-        "bittrex": (currency + "-" + asset),
-        "bitfinex": (asset + currency),
-        "binance": (asset + currency),
-        "poloniex": (currency + "_" + asset),
-        "coinbase": (asset + "-" + currency),
-        "kraken": (asset.lower() + currency.lower()),
-    }
-    symbol = symbols[exchange]
-    return symbol
-
-
-def trace(error):
-    """
-    Stack Trace Message Formatting
-    """
-    msg = str(type(error).__name__) + str(error.args) + str(traceback.format_exc())
-    return msg
-
-
 # SUBPROCESS REMOTE PROCEDURE CALL
-# ======================================================================
-
-
 def request(api, signal):
     """
     GET remote procedure call to public exchange API
@@ -230,6 +113,7 @@ def request(api, signal):
         "kraken": "https://api.kraken.com",
         "poloniex": "https://www.poloniex.com",
         "binance": "https://api.binance.com",
+        "kucoin": "https://api.kucoin.com",
     }
 
     api["method"] = "GET"
@@ -241,10 +125,11 @@ def request(api, signal):
     api["url"] = urls[api["exchange"]]
 
     url = api["url"] + api["endpoint"]
-
-    print(api)
-
-    time.sleep(10*random())
+    if DETAIL:
+        print(api)
+        print(url)
+    time.sleep(1)
+    # /api/v1/market/orderbook/level1?symbol=BTC-USDT
 
     resp = requests.request(
         method=api["method"],
@@ -253,24 +138,27 @@ def request(api, signal):
         params=api["params"],
         headers=api["headers"],
     )
-
     data = resp.json()
-    if isinstance(data, dict):
-        print("dict keys", data.keys())
-        if "message" in data.keys():
-            print(data)
-    elif isinstance(data, list):
-        print("list len", len(data))
-    else:
+
+    if DETAIL:
+        print(resp)
         print(data)
-    print("len request data", len(data))
+        if isinstance(data, dict):
+            print("dict keys", data.keys())
+            if "message" in data.keys():
+                print(data)
+        elif isinstance(data, list):
+            print("list len", len(data))
+        else:
+            print(data)
+        print("len request data", len(data))
     doc = (
         api["exchange"]
         + api["pair"]
         + str(int(10 ** 6 * api["nonce"]))
         + "_{}_private.txt".format(api["exchange"])
     )
-    race_write(doc, json_dumps(data))
+    json_ipc(doc, json_dumps(data))
     signal.value = 1
 
 
@@ -288,13 +176,14 @@ def process_request(api):
         # multiprocessing text file name nonce
         api["nonce"] = time.time()
         i += 1
-        print("")
-        print(
-            "{} {} PUBLIC attempt:".format(api["exchange"], api["pair"]),
-            i,
-            time.ctime(),
-            int(time.time()),
-        )
+        if DETAIL:
+            print("")
+            print(
+                "{} {} PUBLIC attempt:".format(api["exchange"], api["pair"]),
+                i,
+                time.ctime(),
+                int(time.time()),
+            )
         child = Process(target=request, args=(api, signal))
         child.daemon = False
         child.start()
@@ -308,20 +197,22 @@ def process_request(api):
         + str(int(10 ** 6 * api["nonce"]))
         + "_{}_private.txt".format(api["exchange"])
     )
-    data = race_read_json(doc)
+    data = json_ipc(doc)
     path = PATH + "pipe/"
     if os.path.isfile(path + doc):
         os.remove(path + doc)
-    print(
-        "{} {} PUBLIC elapsed:".format(api["exchange"], api["pair"]),
-        ("%.2f" % (time.time() - begin)),
-    )
-    print("")
+    if DETAIL:
+        print(
+            "{} {} PUBLIC elapsed:".format(api["exchange"], api["pair"]),
+            ("%.2f" % (time.time() - begin)),
+        )
+        print("")
     return data
 
 
 # METHODS
-# ======================================================================
+
+
 def get_price(api):
     """
     Last Price as float
@@ -335,6 +226,7 @@ def get_price(api):
         "poloniex": "/public",
         "coinbase": "/products/{}/ticker".format(symbol),
         "kraken": "/0/public/Ticker",
+        "kucoin": "/api/v1/market/orderbook/level1",
     }
     params = {
         "bittrex": {"market": symbol},
@@ -343,6 +235,7 @@ def get_price(api):
         "poloniex": {"command": "returnTicker"},
         "coinbase": {"market": symbol},
         "kraken": {"pair": [symbol]},
+        "kucoin": {"symbol": symbol},
     }
     api["endpoint"] = endpoints[exchange]
     api["params"] = params[exchange]
@@ -365,8 +258,10 @@ def get_price(api):
                 data = data["result"]
                 data = data[list(data)[0]]
                 last = float(data["c"][0])
+            elif exchange == "kucoin":
+                last = float(data["data"]["price"])
         except Exception as error:
-            print(trace(error), {k:v for k,v in api.items() if k != "secret"})
+            print(trace(error), {k: v for k, v in api.items() if k != "secret"})
         break
 
     return last
@@ -390,6 +285,7 @@ def get_book(api, depth=10):
         "poloniex": "/public",
         "coinbase": "/products/{}/book".format(symbol),
         "kraken": "/0/public/Depth",
+        "kucoin": "/api/v1/market/orderbook/level2_100",
     }
     params = {
         "bittrex": {"market": symbol, "type": "both"},
@@ -398,6 +294,7 @@ def get_book(api, depth=10):
         "poloniex": {"command": "returnOrderBook", "currencyPair": symbol},
         "coinbase": {"level": 2},
         "kraken": {"pair": symbol, "count": "50"},
+        "kucoin": {"symbol": symbol},
     }
     api["endpoint"] = endpoints[exchange]
     api["params"] = params[exchange]
@@ -410,10 +307,12 @@ def get_book(api, depth=10):
                 data = data[list(data)[0]]
             if exchange == "bittrex":
                 data = data["result"]
+            if exchange == "kucoin":
+                data = data["data"]
 
             # convert books to unified format
             book = {"bidv": [], "bidp": [], "askp": [], "askv": []}
-            if exchange in ["binance", "poloniex", "coinbase", "kraken"]:
+            if exchange in ["binance", "poloniex", "coinbase", "kraken", "kucoin"]:
                 # {"bids" [[,],[,],[,]], "asks": [[,],[,],[,]]}
                 for i in range(len(data["bids"])):
                     book["bidv"].append(float(data["bids"][i][1]))
@@ -455,11 +354,11 @@ def get_book(api, depth=10):
             book["askp"] = book["askp"][:depth]
 
             book = {k: np.array(v) for k, v in book.items()}
-
-            print("total bids:", len(book["bidp"]))
-            print("total asks:", len(book["askp"]))
+            if DETAIL:
+                print("total bids:", len(book["bidp"]))
+                print("total asks:", len(book["askp"]))
         except Exception as error:
-            print(trace(error), {k:v for k,v in api.items() if k != "secret"})
+            print(trace(error), {k: v for k, v in api.items() if k != "secret"})
         break
 
     return book
@@ -476,30 +375,29 @@ def get_candles(api, start=None, end=None, interval=86400):
 
     def paginate_candles(api, start, end, interval):
         """
-        paginate requests per maximum request size per exchage
-        collate responses crudely with one interval overlap               
-        """
+        paginate requests per maximum request size per exchange
+        collate responses crudely with overlap
 
+        # USE FOR EDGE MATCHING DEV
+        max_candles = {
+            "bittrex": 100,
+            "bitfinex": 100,
+            "binance": 100,
+            "poloniex": 100,
+            "coinbase": 100,
+            "kraken": 100,
+            "kucoin": 100,
+        }
+        """
         max_candles = {
             "bittrex": 1000,  # 1000
-            "bitfinex": 2000,  # 5000
+            "bitfinex": 10000,  # 10000
             "binance": 500,  # 1000
             "poloniex": 2000,
             "coinbase": 300,  # 300
             "kraken": 200,  # 200
+            "kucoin": 1500,  # 1500
         }
-
-        """
-        # USE FOR EDGE MATCHING DEV
-        max_candles = {
-            "bittrex": 100, 
-            "bitfinex": 100,  
-            "binance": 100, 
-            "poloniex": 100,
-            "coinbase": 100,
-            "kraken": 100,  
-        }
-        """
         overlap = 2
         # fetch the max candles at this exchange
         max_candles = max_candles[exchange] - (2 * overlap + 1)
@@ -535,15 +433,14 @@ def get_candles(api, start=None, end=None, interval=86400):
         data = [i for i in data if "unix" in i]
 
         return data
-        
-        
+
     def no_duplicates(data):
         """
         ensure no duplicates due to pagination overlap at edges
         """
         dup_free = []
         timestamps = []
-        for index, item in enumerate(data):
+        for _, item in enumerate(data):
             if item["unix"] not in timestamps:
                 timestamps.append(item["unix"])
                 dup_free.append(item)
@@ -551,24 +448,29 @@ def get_candles(api, start=None, end=None, interval=86400):
         return dup_free
 
     def sort_by_unix(data):
-
+        """
+        pagination may still be backwards and segmented; resort by timestamp
+        """
         data = sorted(data, key=lambda k: k["unix"])
 
         return data
 
     def interpolate_previous(data, start, end, interval):
-
+        """
+        candles may be missing; fill them in with previous close
+        """
         start = int(start)
         end = int(end)
         interval = int(interval)
-
-        ip_unix = [t for t in range(min(data["unix"]), max(data["unix"]), interval)]
-
-        v = []
-        h = []
-        l = []
-        o = []
-        c = []
+        ip_unix = [*range(min(data["unix"]), max(data["unix"]), interval)]
+        out = {
+            "high": [],
+            "low": [],
+            "open": [],
+            "close": [],
+            "volume": [],
+            "unix": ip_unix,
+        }
         for _, candle in enumerate(ip_unix):
             for idx, _ in enumerate(data["unix"]):
 
@@ -577,78 +479,71 @@ def get_candles(api, start=None, end=None, interval=86400):
 
                 if 0 <= diff < interval:
                     match = True
-                    v.append(data["volume"][idx])
-                    h.append(data["high"][idx])
-                    l.append(data["low"][idx])
-                    o.append(data["open"][idx])
-                    c.append(data["close"][idx])
+                    out["volume"].append(data["volume"][idx])
+                    out["high"].append(data["high"][idx])
+                    out["low"].append(data["low"][idx])
+                    out["open"].append(data["open"][idx])
+                    out["close"].append(data["close"][idx])
                     break
 
             if not match:
                 if candle == start:
                     close = data["close"][0]
                 else:
-                    close = c[-1]
-                v.append(0)
-                h.append(close)
-                l.append(close)
-                o.append(close)
-                c.append(close)
-        d2 = {}
-        d2["high"] = h
-        d2["low"] = l
-        d2["open"] = o
-        d2["close"] = c
-        d2["volume"] = v
-        d2["unix"] = ip_unix
+                    close = out["close"][-1]
+                out["volume"].append(0)
+                out["high"].append(close)
+                out["low"].append(close)
+                out["open"].append(close)
+                out["close"].append(close)
 
         if DETAIL:
-            for k, v in d2.items():
-                print(len(v), k)
+            for key, val in out.items():
+                print(len(val), key)
 
-        return d2
+        return out
 
     def window_data(data, start, end):
         """
         Ensure we do not return any data outside requested window
-        
+
         # use this instead if still in list of dict form
-        # d2 = []        
+        # d2 = []
         # for index, item in enumerate(data):
         #     if start < item["unix"] < end:
         #        d2.append(item)
         """
-        d2 = {"high": [], "low": [], "open": [], "close": [], "volume": [], "unix": []}
+        out = {"high": [], "low": [], "open": [], "close": [], "volume": [], "unix": []}
 
         for idx, item in enumerate(data["unix"]):
             if start < item <= end:
-                d2["high"].append(data["high"][idx])
-                d2["low"].append(data["low"][idx])
-                d2["open"].append(data["open"][idx])
-                d2["close"].append(data["close"][idx])
-                d2["volume"].append(data["volume"][idx])
-                d2["unix"].append(data["unix"][idx])
+                out["high"].append(data["high"][idx])
+                out["low"].append(data["low"][idx])
+                out["open"].append(data["open"][idx])
+                out["close"].append(data["close"][idx])
+                out["volume"].append(data["volume"][idx])
+                out["unix"].append(data["unix"][idx])
 
-        return d2
+        return out
 
     def left_strip(data):
         """
         Remove no volume candles in beginning of dataset
         """
-        d2 = {"high": [], "low": [], "open": [], "close": [], "volume": [], "unix": []}
+        out = {"high": [], "low": [], "open": [], "close": [], "volume": [], "unix": []}
         begin = False
 
         for idx, item in enumerate(data["volume"]):
             if item or begin:
                 begin = True
-                d2["high"].append(data["high"][idx])
-                d2["low"].append(data["low"][idx])
-                d2["open"].append(data["open"][idx])
-                d2["close"].append(data["close"][idx])
-                d2["volume"].append(data["volume"][idx])
-                d2["unix"].append(data["unix"][idx])
+                out["high"].append(data["high"][idx])
+                out["low"].append(data["low"][idx])
+                out["open"].append(data["open"][idx])
+                out["close"].append(data["close"][idx])
+                out["volume"].append(data["volume"][idx])
+                out["unix"].append(data["unix"][idx])
 
-        return d2
+        return out
 
     def reformat(data):
         """
@@ -765,7 +660,7 @@ def get_candles(api, start=None, end=None, interval=86400):
 
         except Exception as error:
             msg = trace(error)
-            print(msg, data, {k:v for k,v in api.items() if k != "secret"})
+            print(msg, data, {k: v for k, v in api.items() if k != "secret"})
             continue
 
 
@@ -840,12 +735,28 @@ def candles(api, start, end, interval):
             604800: 10080,
             2419200: 21600,
         },
+        "kucoin": {
+            60: "1min",
+            180: "3min",
+            300: "5min",
+            900: "15min",
+            1800: "30min",
+            3600: "1hour",
+            7200: "2hour",
+            14400: "4hour",
+            21600: "6hour",
+            28800: "8hour",
+            43200: "12hour",
+            86400: "1day",
+            604800: "1week",
+        },
     }
 
     try:
         bitfinex_hist = "".join(
             [i for i in intervals["bitfinex"][interval] if not i.isdigit()]
         )
+        interval_raw = interval
         interval = intervals[exchange][interval]
     except Exception as error:
         trace(error)
@@ -860,6 +771,7 @@ def candles(api, start, end, interval):
         "poloniex": "/public",
         "coinbase": "/products/{}/candles".format(symbol),
         "kraken": "/0/public/OHLC",
+        "kucoin": "/api/v1/market/candles",
     }
     params = {
         "bittrex": {"marketName": symbol, "tickInterval": interval},
@@ -872,6 +784,7 @@ def candles(api, start, end, interval):
         },
         "coinbase": {"granularity": interval},
         "kraken": {"pair": symbol, "interval": interval},
+        "kucoin": {"symbol": symbol, "type": interval},
     }
     windows = {
         "bittrex": {},  # {"_": ???}, # FIXME NO DOCS BETA
@@ -880,11 +793,14 @@ def candles(api, start, end, interval):
         "poloniex": {"start": start, "end": end},
         "coinbase": {"start": to_iso_date(start), "end": to_iso_date(end)},
         "kraken": {"since": start},
+        "kucoin": {"startAt": int(start), "endAt": int(end)},  # unix
     }
+    if exchange == "bitfinex" and int(time.time()) - end < interval_raw:
+        windows["bitfinex"].pop("end")
+
     api["endpoint"] = endpoints[exchange]
     api["params"] = params[exchange]
     api["params"].update(windows[exchange])
-
 
     try:
         data = process_request(api)
@@ -967,15 +883,29 @@ def candles(api, start, end, interval):
                 }
                 for d in data
             ]
+        elif exchange == "kucoin":
+            data = data["data"]
+            data = [
+                {
+                    "unix": int(d[0]),
+                    "open": float(d[1]),
+                    "close": float(d[2]),
+                    "high": float(d[3]),
+                    "low": float(d[4]),
+                    "volume": float(d[5]),
+                }
+                for d in data
+            ]
     except Exception as error:
-        print(trace(error), {k:v for k,v in api.items() if k != "secret"})
+        print(trace(error), {k: v for k, v in api.items() if k != "secret"})
         data = []
-            
+
     return data
 
 
 # DEMONSTRATION
-# ======================================================================
+
+
 def demo(api):
     """
     Print demo of last price, orderbook, and candles
@@ -998,7 +928,7 @@ def demo(api):
     depth = 100
     start = now - interval * depth
     end = now
-    pprint(get_candles(api, start, end,interval))
+    pprint(get_candles(api, start, end, interval))
 
 
 def main():
@@ -1010,9 +940,16 @@ def main():
     api_docs()
     api = {}
     api["pair"] = "LTC:BTC"
-    exchanges = ["bitfinex", "bittrex", "binance", "poloniex", "coinbase", "kraken"]
-    exchanges = ["bittrex", "binance", "poloniex", "coinbase", "kraken"]
-
+    exchanges = [
+        "bitfinex",
+        "bittrex",
+        "binance",
+        "poloniex",
+        "coinbase",
+        "kraken",
+        "kucoin",
+    ]
+    exchanges = ["kucoin"]
     print("\n", api["pair"], "\n")
     print("fetching PRICE, BOOK, and CANDLES from:\n\n", exchanges)
     for exchange in exchanges:
