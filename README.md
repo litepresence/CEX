@@ -1,7 +1,9 @@
 # CEX
 ---------------------------------------------------------------------------
 ## Centralized Exchange 
-### API Authentication and Data Standardization Python Wrapper
+### API Authentication 
+### and Data Standardization Python Wrapper
+### for Algo Trading
 ----------------------------------------------------------------------------
 ## SUPPORTED EXCHANGES:
 
