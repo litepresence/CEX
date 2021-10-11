@@ -34,8 +34,7 @@
     api["headers"]      # contains authentication signature
 
 
-# PRIVATE AUTHENTICATED REMOTE PROCEURE CALLS
-### Buy, Sell, Cancel, Open Orders, Balances
+# CEX PRIVATE 
 
 ## authenticate(api)
 
@@ -95,8 +94,7 @@
     cancel all orders by api["pair"] (or) by api["pair"] and order_id:
     
 
-# PUBLIC DATA REMOTE PROCEURE CALLS
-### Last, Book, Candles
+# CEX PUBLIC 
 
 ## get_price(api)
     
