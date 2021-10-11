@@ -1,14 +1,16 @@
 # CEX
-
+---------------------------------------------------------------------------
+## Centralized Exchange 
+## API Authentication and Data Standardization
+----------------------------------------------------------------------------
+## SUPPORTED EXCHANGES:
 ### Binance, Bitfinex, Bittrex, Coinbase, Kraken, Kucoin, Poloniex
+----------------------------------------------------------------------------
+## SUPPORTED REMOTE PROCEDURES:
 
-
-## Centralized Cryptocurrency Exchange API Authentication
-
-
-
-# PRIVATE
-### Normalized Buy, Sell, Cancel, Open Orders, Balances
+### PRIVATE: Buy, Sell, Cancel, Orders, Balances
+### PUBLIC: Last, Book, Candles
+----------------------------------------------------------------------------
 
     USER PROVIDES:
 
@@ -28,7 +30,11 @@
     api["params"]       # dict with request specific parameters
     api["data"]         # str with request specific parameters
     api["headers"]      # contains authentication signature
-    
+
+
+# PRIVATE AUTHENTICATED REMOTE PROCEURE CALLS
+### Buy, Sell, Cancel, Open Orders, Balances
+
 ## authenticate(api)
     """
     Confirms api key and signature match by attempting balance call
@@ -63,8 +69,8 @@
     DELETE all orders by api["pair"] (or) by api["pair"] and order_id:
     """
 
-# PUBLIC
-### Normalized Last, Book, Candles
+# PUBLIC DATA REMOTE PROCEURE CALLS
+### Last, Book, Candles
 
 ## get_price(api)
     """
