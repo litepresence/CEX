@@ -1,7 +1,7 @@
 # CEX
 ---------------------------------------------------------------------------
 ## Centralized Exchange 
-### API Authentication and Data Standardization
+### API Authentication and Data Standardization Python Wrapper
 ----------------------------------------------------------------------------
 ## SUPPORTED EXCHANGES:
 
