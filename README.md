@@ -42,52 +42,84 @@
     """
        
 ## get_balances(api)
-    """
+
     Normalized external requests for balances in one market
-    {"asset_total": 0.0, "asset_free": 0.0, "asset_tied": 0.0,
-    "currency_total": 0.0, "currency_free": 0.0, "currency_tied": 0.0}
-    """
+    
+    {
+        "asset_total": 0.0,      
+        "asset_free": 0.0,       # available to trade
+        "asset_tied": 0.0,       # already on orders
+        "currency_total": 0.0, 
+        "currency_free": 0.0, 
+        "currency_tied": 0.0,
+    }
+
     
 ## get_orders(api)
     """
     Normalized external requests for open orders in one market
 
     normalized orders (sums in asset terms)
-    {"bids": {}, "asks": {}, "bid_sum": 0.0, "ask_sum": 0.0}
+    
+    {
+        "bids": {}, 
+        "asks": {}, 
+        "bid_sum": 0.0, 
+        "ask_sum": 0.0,
+    }
 
-    normalized bid or ask dictionary (qty in asset terms)
-    {"price": 0.0, "order_id": "", "start_qty": 0.0, "current_qty": 0.0}
-    """
+    normalized bid or ask dictionary format (qty in asset terms)
+    
+    {
+        "price": 0.0, 
+        "order_id": "", 
+        "start_qty": 0.0, 
+        "current_qty": 0.0
+    }
+
     
 ## post_order(edict, api)
-    """
-    edict = {"side": "sell", "amount": 5531, "price": 0.00003142}
-    """
+
+    edict = {
+        "side": "sell",       # or buy
+        "amount": 5531,       
+        "price": 0.00003142
+    }
+
     
 ## cancel(api, order_ids=None)
-    """
-    DELETE all orders by api["pair"] (or) by api["pair"] and order_id:
-    """
+    
+    cancel all orders by api["pair"] (or) by api["pair"] and order_id:
+    
 
 # PUBLIC DATA REMOTE PROCEURE CALLS
 ### Last, Book, Candles
 
 ## get_price(api)
-    """
-    Last Price as float()
-    """
+    
+    Last Price as <float>
+    
     
 ## get_book(api, depth=10):
-    """
-    Depth of Market format:
-    {"bidv": [], "bidp": [], "askp": [], "askv": []}
-    """
+    
+    depth of market format is a list of floats
+    where bidp[0] is the highest bid and askp[0] is the lowest ask
+    
+    {
+        "bidv": [], 
+        "bidp": [], 
+        "askp": [], 
+        "askv": [],
+    }
+    
     
 ## get_candles(api, start=None, end=None, interval=86400):
     """
     output normalized requests for candle data
     returns a dict with numpy array values for the following keys
+    
     ["high", "low", "open", "close", "volume", "unix"]
+    
     where unix is int and the remainder are float
     this is the ideal format for utilizing talib / tulip indicators
     """
