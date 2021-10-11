@@ -1,14 +1,16 @@
 # CEX
 ---------------------------------------------------------------------------
 ## Centralized Exchange 
-## API Authentication and Data Standardization
+### API Authentication and Data Standardization
 ----------------------------------------------------------------------------
 ## SUPPORTED EXCHANGES:
+
 ### Binance, Bitfinex, Bittrex, Coinbase, Kraken, Kucoin, Poloniex
 ----------------------------------------------------------------------------
 ## SUPPORTED REMOTE PROCEDURES:
 
-### PRIVATE: Buy, Sell, Cancel, Orders, Balances
+### PRIVATE: Authenticate, Buy, Sell, Cancel, Orders, Balances
+
 ### PUBLIC: Last, Book, Candles
 ----------------------------------------------------------------------------
 
@@ -36,14 +38,15 @@
 ### Buy, Sell, Cancel, Open Orders, Balances
 
 ## authenticate(api)
-    """
+
     Confirms api key and signature match by attempting balance call
-    Returns True or False
-    """
+    Returns <bool> True or False
+
        
 ## get_balances(api)
 
     Normalized external requests for balances in one market
+    all values are <float>
     
     {
         "asset_total": 0.0,      
@@ -56,7 +59,7 @@
 
     
 ## get_orders(api)
-    """
+    
     Normalized external requests for open orders in one market
 
     normalized orders (sums in asset terms)
@@ -64,7 +67,7 @@
     {
         "bids": {}, 
         "asks": {}, 
-        "bid_sum": 0.0, 
+        "bid_sum": 0.0,     # the sum of user's bids
         "ask_sum": 0.0,
     }
 
@@ -114,7 +117,7 @@
     
     
 ## get_candles(api, start=None, end=None, interval=86400):
-    """
+    
     output normalized requests for candle data
     returns a dict with numpy array values for the following keys
     
@@ -122,7 +125,7 @@
     
     where unix is int and the remainder are float
     this is the ideal format for utilizing talib / tulip indicators
-    """
+    
     
     
 WTFPL www.litepresence.com 2019
