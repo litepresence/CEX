@@ -43,7 +43,8 @@
         get_balances,
         get_orders,
         post_order,
-        delete_order,
+        post_orders,
+        delete_orders,
     )
     
     # GET METHOD
@@ -53,9 +54,10 @@
     
     # POST METHOD
     print(post_order(edict, api))
+    print(post_orders(edicts, api))
 
     # DELETE METHOD
-    print(delete_order(api, order_ids))
+    print(delete_orders(api, order_ids))
 
 ## authenticate(api)
 
