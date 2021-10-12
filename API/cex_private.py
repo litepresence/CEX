@@ -43,13 +43,14 @@ def about():
 
     # USAGE:
     #
-    # from private_cex import get_orders, get_balances, post_order, cancel
+    # from private_cex import get_orders, get_balances, post_order, delete_orders
     #
-    # get_orders(api)          # your open orders in market
-    # get_balances(api)        # your asset and currency balances in market
-    # cancel(api)              # cancel all in market
-    # cancel(api, order_ids)   # cancel string or list of strings
-    # post_order(api, side, quantity, price)    # "buy" and "sell"
+    # get_orders(api)                 # your open orders in market
+    # get_balances(api)               # your asset and currency balances in market
+    # delete_orders(api)              # cancel all in market
+    # delete_orders(api, order_ids)   # cancel string or list of strings
+    # post_order(edict, api)          # post a single order edict
+    # post_orders(edicts, api)        # post a list of order edicts
     #
 
     """
@@ -801,7 +802,7 @@ def post_order(edict, api):
     return ret
 
 
-def cancel(api, order_ids=None):
+def delete_orders(api, order_ids=None):
     """
     DELETE all orders by api["pair"] (or) by symbol and order_id:
     """
@@ -923,11 +924,11 @@ def demo():
     }
     print(api["symbol"])
     print("authenticated", authenticate(api))
-    print(cancel(api))
+    print(delete_orders(api))
     print(get_orders(api))
     print(get_balances(api))
     # edict = {"side": "sell", "amount": 5531, "price": 0.00003142}
-    # print(post_order(api, edict))
+    # print(post_order(edict, api))
     # print(get_orders(api))
     # print(get_balances(api))
 
