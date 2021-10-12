@@ -11,9 +11,9 @@
 ----------------------------------------------------------------------------
 ## SUPPORTED REMOTE PROCEDURES:
 
-### PRIVATE: Authenticate, Buy, Sell, Cancel, Orders, Balances
+### PRIVATE: Authenticate, Get Balances, Get Orders, Post Orders, Delete Orders
 
-### PUBLIC: Last, Book, Candles
+### PUBLIC: Get Price, Get Book, Get Candles
 ----------------------------------------------------------------------------
 
     USER PROVIDES:
@@ -37,6 +37,25 @@
 
 
 # CEX PRIVATE 
+    
+    from cex_private import (
+        authenticate,
+        get_balances,
+        get_orders,
+        post_order,
+        delete_order,
+    )
+    
+    # GET METHOD
+    authenticated = authenticate(api)
+    balances = get_balances(api)
+    orders = get_orders(api)
+    
+    # POST METHOD
+    print(post_order(edict, api))
+
+    # DELETE METHOD
+    print(delete_order(api, order_ids))
 
 ## authenticate(api)
 
@@ -91,12 +110,19 @@
     }
 
     
-## cancel(api, order_ids=None)
+## delete_order(api, order_ids=None)
     
-    cancel all orders by api["pair"] (or) by api["pair"] and order_id:
+    delete all orders by api["pair"] (or) by api["pair"] and order_id:
     
 
 # CEX PUBLIC 
+
+    from public_cex import get_price, get_book, get_candles
+
+    price = get_price(api)
+    book = get_book(api, depth)
+    candles = get_candles(api, interval, start, end)
+
 
 ## get_price(api)
     
